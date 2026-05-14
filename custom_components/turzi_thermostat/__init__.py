@@ -10,6 +10,7 @@ import logging
 import os
 
 from homeassistant.components import frontend
+from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
@@ -60,11 +61,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     }
 
     # Register frontend panel (static path + sidebar entry)
-    hass.http.register_static_path(
-        f"/turzi_thermostat_panel",
-        PANEL_FRONTEND_PATH,
-        cache_headers=False,
-    )
+    await hass.http.async_register_static_paths([
+        StaticPathConfig(
+            url_path="/turzi_thermostat_panel",
+            path=PANEL_FRONTEND_PATH,
+            cache_headers=False,
+        )
+    ])
 
     frontend.async_register_built_in_panel(
         hass,
