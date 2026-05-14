@@ -73,10 +73,14 @@ def _calculate_pmv(
     m = metabolic_rate * 58.15  # W/m²
     w = 0.0  # External work, assumed 0 for sedentary
     icl = clothing_insulation * 0.155  # m²·K/W
-    ta = air_temp
-    tr = mean_radiant_temp
+    # Clamp to physically plausible ranges to guard against sensor glitches
+    ta = max(-20.0, min(60.0, air_temp))
+    tr = max(-20.0, min(60.0, mean_radiant_temp))
     va = max(air_velocity, 0.05)  # Minimum air velocity
-    pa = relative_humidity * 10.0 * math.exp(16.6536 - 4030.183 / (ta + 235.0))  # Pa
+    rh = max(0.0, min(100.0, relative_humidity))
+    # Water vapour pressure — clamp exponent to avoid OverflowError on bad sensor data
+    exp_arg = min(16.6536 - 4030.183 / (ta + 235.0), 20.0)
+    pa = rh * 10.0 * math.exp(exp_arg)  # Pa
 
     # Clothing surface area factor
     if icl < 0.078:
@@ -99,6 +103,8 @@ def _calculate_pmv(
             3.96e-8 * fcl * ((tcl + 273.0) ** 4 - (tr + 273.0) ** 4)
             + fcl * hc * (tcl - ta)
         )
+        # Guard against divergence — keep within ±100°C of air temp
+        tcl = max(ta - 100.0, min(ta + 100.0, tcl))
 
         if abs(tcl - tcl_old) < 0.001:
             break
@@ -121,6 +127,15 @@ def _calculate_pmv(
 
     # Clamp to valid range
     return max(-3.0, min(3.0, pmv))
+
+
+def _safe_calculate_pmv(**kwargs) -> float:
+    """Wrapper around _calculate_pmv that catches math overflows."""
+    try:
+        return _calculate_pmv(**kwargs)
+    except (OverflowError, ValueError, ZeroDivisionError) as err:
+        _LOGGER.warning("PMV calculation failed (%s), defaulting to neutral (0)", err)
+        return 0.0
 
 
 def pmv_to_comfort_score(pmv: float) -> float:
@@ -209,8 +224,8 @@ def calculate_comfort(
     clothing = _estimate_clothing_insulation(outdoor_temp)
     air_velocity = DEFAULT_AIR_VELOCITY.get(hvac_type, 0.1)
 
-    # Calculate PMV
-    pmv = _calculate_pmv(
+    # Calculate PMV using the safe wrapper (handles sensor glitches / math overflow)
+    pmv = _safe_calculate_pmv(
         air_temp=indoor_temp,
         mean_radiant_temp=indoor_temp,  # Simplified: assume MRT = air temp
         air_velocity=air_velocity,
