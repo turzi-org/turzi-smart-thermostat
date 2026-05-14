@@ -177,7 +177,6 @@ class TurziThermostatPanel extends HTMLElement {
           <div class="meta-row"><span class="meta-label">Heating</span><span style="font-size:12px">${sp.heating_output}</span></div>
           ${sp.cooling_output ? `<div class="meta-row"><span class="meta-label">Cooling</span><span style="font-size:12px">${sp.cooling_output}</span></div>` : ''}
           <div class="meta-row"><span class="meta-label">Target</span><span>${sp.target_temp}°C</span></div>
-          <div class="meta-row"><span class="meta-label">Sensitivity</span><span>${sp.comfort_sensitivity}</span></div>
         </div>`;
       }
       html += '</div>';
@@ -205,8 +204,6 @@ class TurziThermostatPanel extends HTMLElement {
       <div class="form-group"><label>Heating Output</label><select id="zHeat"><option value="">Select...</option>${optionsHtml(ents?.heating_outputs, existing?.heating_output)}</select></div>
       <div class="form-group"><label>Cooling Output (optional)</label><select id="zCool"><option value="">None</option>${optionsHtml(ents?.cooling_outputs, existing?.cooling_output)}</select></div>
       <div class="form-group"><label>Target Temperature (°C)</label><input id="zTarget" type="number" step="0.5" min="5" max="35" value="${existing?.target_temp || 21}"></div>
-      <div class="form-group"><label>Comfort Sensitivity</label><select id="zSens">
-        ${['low','medium','high'].map(s => `<option value="${s}" ${existing?.comfort_sensitivity === s ? 'selected' : ''}>${s}</option>`).join('')}</select></div>
       <div class="btn-row">${editId ? `<button class="secondary" id="zDel" style="margin-right:auto;color:#ef4444">Delete</button>` : ''}
         <button class="secondary" id="zCancel">Cancel</button><button class="primary" id="zSave">Save</button></div></div>`;
     s.appendChild(div);
@@ -224,7 +221,6 @@ class TurziThermostatPanel extends HTMLElement {
         heating_output: div.querySelector('#zHeat').value,
         cooling_output: div.querySelector('#zCool').value || null,
         target_temp: parseFloat(div.querySelector('#zTarget').value),
-        comfort_sensitivity: div.querySelector('#zSens').value,
       };
       if (!space.name || !space.temp_sensor || !space.heating_output) { alert('Name, temp sensor, and heating output are required.'); return; }
       await this._ws('turzi_thermostat/save_spaces', { spaces: [space] });

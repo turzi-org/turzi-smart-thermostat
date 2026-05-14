@@ -65,14 +65,6 @@ class SeasonalMode(StrEnum):
     SUMMER = "summer"   # Cooling only (no heating)
     AUTO = "auto"       # Both heating and cooling allowed
 
-# Comfort sensitivity presets
-class ComfortSensitivity(StrEnum):
-    """How aggressively to correct temperature deviations."""
-
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-
 
 # Thermal inertia defaults per HVAC system type
 # heat_up_rate: °C per hour the system can raise indoor temp

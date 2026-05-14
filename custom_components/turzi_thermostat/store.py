@@ -115,7 +115,6 @@ class TurziStore:
         cooling_output: str | None = None,
         auxiliary_heating: str | None = None,
         target_temp: float = DEFAULT_TARGET_TEMP,
-        comfort_sensitivity: str = "medium",
     ) -> None:
         """Add or update a space configuration."""
         self._data["spaces"][space_id] = {
@@ -127,7 +126,6 @@ class TurziStore:
             "cooling_output": cooling_output,
             "auxiliary_heating": auxiliary_heating,
             "target_temp": target_temp,
-            "comfort_sensitivity": comfort_sensitivity,
         }
         # Initialize empty schedule if new space
         if space_id not in self._data["schedule"]:

@@ -11,7 +11,7 @@ import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 
-from .const import DOMAIN, HvacSystemType, ComfortSensitivity
+from .const import DOMAIN, HvacSystemType
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -148,7 +148,6 @@ async def ws_get_config(
             vol.Optional("cooling_output"): vol.Any(str, None),
             vol.Optional("auxiliary_heating"): vol.Any(str, None),
             vol.Optional("target_temp", default=21.0): vol.Coerce(float),
-            vol.Optional("comfort_sensitivity", default="medium"): vol.In([e.value for e in ComfortSensitivity]),
         }
     ],
 })
@@ -180,7 +179,6 @@ async def ws_save_spaces(
             cooling_output=space.get("cooling_output"),
             auxiliary_heating=space.get("auxiliary_heating"),
             target_temp=space.get("target_temp", 21.0),
-            comfort_sensitivity=space.get("comfort_sensitivity", "medium"),
         )
         new_space_ids.append(space_id)
 
