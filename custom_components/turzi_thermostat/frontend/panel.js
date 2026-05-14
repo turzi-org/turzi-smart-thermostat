@@ -315,11 +315,90 @@ class TurziThermostatPanel extends HTMLElement {
       c.querySelector('[data-action]')?.addEventListener('click', () => this._showTierModal());
       return;
     }
-    let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px"><h2>Energy Rate Tiers</h2><button class="primary" id="editTiers">Edit Tiers</button></div><div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap">`;
-    rates.tiers.forEach(t => { html += `<span class="tier-chip" style="background:${t.color || '#888'}22;color:${t.color || '#888'};border:1px solid ${t.color || '#888'}44">${t.name}</span>`; });
-    html += '</div><p style="color:var(--turzi-muted);font-size:13px">Energy rate schedule painting coming in the next update.</p>';
+
+    const tiers = rates.tiers;
+    const tierColors = {};
+    tiers.forEach(t => { tierColors[t.name] = t.color || '#888'; });
+
+    const days = ['mon','tue','wed','thu','fri','sat','sun'];
+    const dayLabels = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    const hours = Array.from({length: 24}, (_, i) => i);
+
+    let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap">
+      <h2>Energy Rates</h2>
+      <button class="primary" id="editTiers">Edit Tiers</button>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+      ${tiers.map(t => `<span style="display:inline-flex;align-items:center;gap:4px;font-size:12px"><span style="width:12px;height:12px;border-radius:3px;background:${t.color || '#888'}"></span>${t.name}</span>`).join('')}
+    </div>`;
+
+    // Build grid from existing schedule
+    const grid = {};
+    days.forEach(d => { grid[d] = {}; hours.forEach(h => grid[d][h] = null); });
+    (rates.schedule || []).forEach(b => {
+      const startH = parseInt(b.start.split(':')[0]);
+      const endH = parseInt(b.end.split(':')[0]) || 24;
+      (b.days || []).forEach(d => { for (let h = startH; h < endH; h++) grid[d][h] = b.tier; });
+    });
+
+    html += `<div class="schedule-grid"><div class="schedule-header"></div>${dayLabels.map(d => `<div class="schedule-header">${d}</div>`).join('')}`;
+    hours.forEach(h => {
+      html += `<div class="schedule-time">${String(h).padStart(2,'0')}:00</div>`;
+      days.forEach(d => {
+        const tier = grid[d][h];
+        const bg = tier ? (tierColors[tier] || '#888') : 'var(--turzi-border)';
+        html += `<div class="schedule-cell" data-day="${d}" data-hour="${h}" style="background:${bg}">&nbsp;</div>`;
+      });
+    });
+    html += '</div>';
+
+    html += `<div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <span style="font-size:13px;color:var(--turzi-muted);line-height:36px">Paint tier:</span>
+      ${tiers.map(t => `<button class="secondary eTier" data-tier="${t.name}" style="padding:6px 14px;font-size:12px;border-color:${t.color || '#888'}">${t.name}</button>`).join('')}
+      <button class="secondary eTier" data-tier="" style="padding:6px 14px;font-size:12px;border-color:var(--turzi-muted)">Clear</button>
+      <button class="primary" id="eSchSave" style="margin-left:auto">Save Energy Schedule</button>
+    </div>`;
+
     c.innerHTML = html;
+
+    let paintTier = tiers[0]?.name || '';
+    c.querySelectorAll('.eTier').forEach(b => b.addEventListener('click', () => {
+      paintTier = b.dataset.tier;
+      c.querySelectorAll('.eTier').forEach(x => { x.style.background = 'transparent'; x.style.color = ''; });
+      b.style.background = paintTier ? (tierColors[paintTier] || '#888') : 'var(--turzi-muted)';
+      b.style.color = '#fff';
+    }));
+
+    let painting = false;
+    const paintCell = (cell) => {
+      grid[cell.dataset.day][parseInt(cell.dataset.hour)] = paintTier || null;
+      cell.style.background = paintTier ? (tierColors[paintTier] || '#888') : 'var(--turzi-border)';
+    };
+    c.querySelectorAll('.schedule-cell').forEach(cell => {
+      cell.addEventListener('mousedown', (e) => { painting = true; paintCell(cell); e.preventDefault(); });
+      cell.addEventListener('mouseenter', () => { if (painting) paintCell(cell); });
+    });
+    document.addEventListener('mouseup', () => painting = false);
+
     c.querySelector('#editTiers')?.addEventListener('click', () => this._showTierModal());
+    c.querySelector('#eSchSave')?.addEventListener('click', async () => {
+      // Convert grid to blocks
+      const blocks = [];
+      days.forEach(d => {
+        let current = null, start = null;
+        hours.forEach(h => {
+          const t = grid[d][h];
+          if (t !== current) {
+            if (current) blocks.push({ days: [d], start: `${String(start).padStart(2,'0')}:00`, end: `${String(h).padStart(2,'0')}:00`, tier: current });
+            current = t; start = h;
+          }
+        });
+        if (current) blocks.push({ days: [d], start: `${String(start).padStart(2,'0')}:00`, end: '23:59', tier: current });
+      });
+      await this._ws('turzi_thermostat/save_energy_rates', { tiers: tiers, schedule: blocks });
+      await this._loadConfig();
+      alert('Energy schedule saved!');
+    });
   }
 
   _showTierModal() {
