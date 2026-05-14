@@ -10,6 +10,7 @@ const TABS = [
   { id: 'schedule', label: 'Schedule', icon: '📅' },
   { id: 'energy', label: 'Energy', icon: '⚡' },
   { id: 'strategy', label: 'AI Strategy', icon: '🤖' },
+  { id: 'settings', label: 'Settings', icon: '⚙️' },
 ];
 
 const MODE_COLORS = {
@@ -119,6 +120,7 @@ class TurziThermostatPanel extends HTMLElement {
       case 'schedule': this._renderSchedule(c); break;
       case 'energy': this._renderEnergy(c); break;
       case 'strategy': this._renderStrategy(c); break;
+      case 'settings': this._renderSettings(c); break;
     }
   }
 
@@ -448,6 +450,99 @@ class TurziThermostatPanel extends HTMLElement {
         </div></div>`;
     }
     c.innerHTML = html;
+  }
+
+  // === SETTINGS TAB ===
+  async _renderSettings(c) {
+    const settings = this._config?.settings || {};
+    const ents = await this._loadEntities();
+    const switches = ents?.switches || [];
+
+    const currentMode = settings.seasonal_mode || 'auto';
+    const currentSwitch = settings.seasonal_switch_entity || '';
+
+    const switchOptions = switches.map(e =>
+      `<option value="${e.entity_id}" ${e.entity_id === currentSwitch ? 'selected' : ''}>${e.name} (${e.entity_id})</option>`
+    ).join('');
+
+    c.innerHTML = `
+      <h2 style="margin-bottom:24px">Settings</h2>
+
+      <div class="card" style="max-width:520px">
+        <div class="card-header"><span class="card-title">🌡️ Seasonal Mode</span></div>
+        <p style="color:var(--turzi-muted);font-size:13px;margin:0 0 16px">
+          Controls whether the system is allowed to heat, cool, or both.
+          In <strong>Winter</strong> mode only heating is active.
+          In <strong>Summer</strong> mode only cooling is active.
+          <strong>Auto</strong> allows both based on conditions.
+        </p>
+        <div class="form-group">
+          <label>Mode</label>
+          <select id="sSeasonalMode">
+            <option value="auto" ${currentMode === 'auto' ? 'selected' : ''}>Auto (heat &amp; cool)</option>
+            <option value="winter" ${currentMode === 'winter' ? 'selected' : ''}>❄️ Winter (heating only)</option>
+            <option value="summer" ${currentMode === 'summer' ? 'selected' : ''}>☀️ Summer (cooling only)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>HVAC Season Switch <span style="color:var(--turzi-muted);font-size:12px">(optional)</span></label>
+          <p style="color:var(--turzi-muted);font-size:12px;margin:0 0 8px">
+            If your HVAC has a physical winter/summer switch entity, select it here.
+            The system will automatically toggle it (ON = winter, OFF = summer).
+          </p>
+          <select id="sSeasonalSwitch">
+            <option value="">None</option>
+            ${switchOptions}
+          </select>
+        </div>
+      </div>
+
+      <div class="card" style="max-width:520px;margin-top:16px">
+        <div class="card-header"><span class="card-title">🧠 Comfort Engine</span></div>
+        <div class="form-group">
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+            <input type="checkbox" id="sHumidity" ${settings.humidity_compensation !== false ? 'checked' : ''}
+              style="width:18px;height:18px;accent-color:var(--turzi-primary)">
+            Humidity compensation
+          </label>
+          <p style="color:var(--turzi-muted);font-size:12px;margin:6px 0 0">Adjusts target temp based on indoor humidity (high humidity feels warmer)</p>
+        </div>
+        <div class="form-group">
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+            <input type="checkbox" id="sWind" ${settings.wind_compensation !== false ? 'checked' : ''}
+              style="width:18px;height:18px;accent-color:var(--turzi-primary)">
+            Wind compensation
+          </label>
+          <p style="color:var(--turzi-muted);font-size:12px;margin:6px 0 0">Adjusts target temp based on outdoor wind speed (wind makes it feel colder)</p>
+        </div>
+        <div class="form-group">
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+            <input type="checkbox" id="sPrecon" ${settings.preconditioning_enabled !== false ? 'checked' : ''}
+              style="width:18px;height:18px;accent-color:var(--turzi-primary)">
+            Preconditioning
+          </label>
+          <p style="color:var(--turzi-muted);font-size:12px;margin:6px 0 0">Starts heating/cooling before a schedule transition so the room is ready on time</p>
+        </div>
+      </div>
+
+      <div style="max-width:520px;margin-top:20px;display:flex;justify-content:flex-end">
+        <button class="primary" id="sSave">Save Settings</button>
+      </div>`;
+
+    c.querySelector('#sSave').addEventListener('click', async () => {
+      const newSettings = {
+        seasonal_mode: c.querySelector('#sSeasonalMode').value,
+        seasonal_switch_entity: c.querySelector('#sSeasonalSwitch').value || null,
+        humidity_compensation: c.querySelector('#sHumidity').checked,
+        wind_compensation: c.querySelector('#sWind').checked,
+        preconditioning_enabled: c.querySelector('#sPrecon').checked,
+      };
+      await this._ws('turzi_thermostat/save_settings', { settings: newSettings });
+      await this._loadConfig();
+      // Show brief save confirmation
+      const btn = c.querySelector('#sSave');
+      if (btn) { btn.textContent = '✓ Saved'; btn.disabled = true; setTimeout(() => { btn.textContent = 'Save Settings'; btn.disabled = false; }, 2000); }
+    });
   }
 
   _emptyState(title, desc, btnText = null, btnAction = null) {

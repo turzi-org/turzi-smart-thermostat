@@ -222,11 +222,13 @@ class TurziCoordinator(DataUpdateCoordinator[TurziData]):
         )
 
         # Determine HVAC action from strategy
+        # Downgrade cooling to idle if this zone has no cooling output
+        has_cooling = bool(config.get("cooling_output"))
         action_map = {
             "heat": HVACAction.HEATING,
             "pre_heat": HVACAction.HEATING,
-            "cool": HVACAction.COOLING,
-            "pre_cool": HVACAction.COOLING,
+            "cool": HVACAction.COOLING if has_cooling else HVACAction.IDLE,
+            "pre_cool": HVACAction.COOLING if has_cooling else HVACAction.IDLE,
             "idle": HVACAction.IDLE,
             "off": HVACAction.OFF,
         }

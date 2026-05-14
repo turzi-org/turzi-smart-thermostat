@@ -123,6 +123,15 @@ class StrategyEngine:
                 now, current_temp, target_temp, schedule_mode, next_transition, next_mode, thermal, hvac_type,
             )
             if precondition:
+                action = precondition["action"]
+                # Respect seasonal mode even in pre-conditioning
+                if action in ("pre_cool", "cool") and seasonal_mode == "winter":
+                    action = "idle"
+                    precondition["reason"] = f"Winter mode — pre-cooling blocked ({precondition['reason']})"
+                elif action in ("pre_heat", "heat") and seasonal_mode == "summer":
+                    action = "idle"
+                    precondition["reason"] = f"Summer mode — pre-heating blocked ({precondition['reason']})"
+                precondition["action"] = action
                 energy_note = f"Current tier: {energy_tier}" if energy_tier else None
                 return SpaceStrategy(action=precondition["action"], reason=precondition["reason"], target_temp=precondition["target"], energy_note=energy_note, confidence=confidence)
 
@@ -137,6 +146,12 @@ class StrategyEngine:
         weather_strategy = self._check_weather_anticipation(
             current_temp, target_temp, outdoor_temp, forecast_temps, delta, thermal,
         )
+        if weather_strategy:
+            action = weather_strategy["action"]
+            if action in ("pre_cool", "cool") and seasonal_mode == "winter":
+                weather_strategy = None  # skip — winter blocks cooling
+            elif action in ("pre_heat", "heat") and seasonal_mode == "summer":
+                weather_strategy = None  # skip — summer blocks heating
         if weather_strategy:
             energy_note = f"Current tier: {energy_tier}" if energy_tier else None
             return SpaceStrategy(**weather_strategy, energy_note=energy_note, confidence=confidence)
