@@ -93,6 +93,8 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_save_schedule)
     websocket_api.async_register_command(hass, ws_save_energy_rates)
     websocket_api.async_register_command(hass, ws_save_settings)
+    websocket_api.async_register_command(hass, ws_set_override)
+    websocket_api.async_register_command(hass, ws_clear_override)
     websocket_api.async_register_command(hass, ws_get_strategy)
     websocket_api.async_register_command(hass, ws_get_dashboard)
     websocket_api.async_register_command(hass, ws_get_available_entities)
@@ -331,6 +333,62 @@ async def ws_save_settings(
     connection.send_result(msg["id"], {"success": True})
 
 
+# --- Set Override ---
+
+@websocket_api.websocket_command({
+    vol.Required("type"): "turzi_thermostat/set_override",
+    vol.Required("entry_id"): str,
+    vol.Required("space_id"): str,
+    vol.Optional("temp"): vol.Any(vol.Coerce(float), None),
+    vol.Optional("mode"): vol.Any(str, None),
+})
+@websocket_api.async_response
+async def ws_set_override(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict,
+) -> None:
+    """Set a manual temperature or mode override for a space."""
+    entry_data = _get_entry_data(hass, msg["entry_id"])
+    if not entry_data:
+        connection.send_error(msg["id"], "not_found", "Integration entry not found")
+        return
+
+    coordinator = entry_data["coordinator"]
+    coordinator.set_manual_override(
+        space_id=msg["space_id"],
+        temp=msg.get("temp"),
+        mode=msg.get("mode"),
+    )
+    await coordinator.async_request_refresh()
+    connection.send_result(msg["id"], {"success": True})
+
+
+# --- Clear Override ---
+
+@websocket_api.websocket_command({
+    vol.Required("type"): "turzi_thermostat/clear_override",
+    vol.Required("entry_id"): str,
+    vol.Required("space_id"): str,
+})
+@websocket_api.async_response
+async def ws_clear_override(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict,
+) -> None:
+    """Clear a manual override for a space, returning to schedule."""
+    entry_data = _get_entry_data(hass, msg["entry_id"])
+    if not entry_data:
+        connection.send_error(msg["id"], "not_found", "Integration entry not found")
+        return
+
+    coordinator = entry_data["coordinator"]
+    coordinator.clear_manual_override(msg["space_id"])
+    await coordinator.async_request_refresh()
+    connection.send_result(msg["id"], {"success": True})
+
+
 # --- Get Strategy ---
 
 @websocket_api.websocket_command({
@@ -407,7 +465,8 @@ async def ws_get_dashboard(
     for space_id, space_config in store.spaces.items():
         # Get live data if available, otherwise use fallback/null values
         live_space = data.spaces.get(space_id) if data else None
-        
+        override = coordinator._manual_overrides.get(space_id, {})
+
         result["spaces"][space_id] = {
             "name": space_config.get("name", space_id),
             "hvac_type": space_config.get("hvac_type"),
@@ -419,6 +478,9 @@ async def ws_get_dashboard(
             "comfort_score": live_space.comfort.score if live_space and live_space.comfort else None,
             "energy_tier": live_space.energy_tier if live_space else None,
             "strategy_reason": live_space.strategy.reason if live_space and live_space.strategy else None,
+            "override_temp": override.get("temp"),
+            "override_mode": override.get("mode"),
+            "has_override": bool(override.get("temp") is not None or override.get("mode") is not None),
         }
 
     connection.send_result(msg["id"], result)

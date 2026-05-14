@@ -144,8 +144,11 @@ class TurziThermostatPanel extends HTMLElement {
         const badgeClass = action.replace('pre_', 'pre');
         const score = sp.comfort_score != null ? sp.comfort_score : '--';
         const scoreColor = score >= 70 ? '#22c55e' : score >= 40 ? '#f59e0b' : '#ef4444';
-        html += `<div class="card">
-          <div class="card-header"><span class="card-title">${sp.name}</span><span class="badge ${badgeClass}">${ACTION_LABELS[action] || action}</span></div>
+        const overrideBadge = sp.has_override
+          ? `<span style="font-size:11px;background:#f59e0b22;color:#f59e0b;border:1px solid #f59e0b44;border-radius:6px;padding:2px 8px;margin-left:8px">✏️ Override</span>`
+          : '';
+        html += `<div class="card" data-space-id="${id}">
+          <div class="card-header"><span class="card-title">${sp.name}${overrideBadge}</span><span class="badge ${badgeClass}">${ACTION_LABELS[action] || action}</span></div>
           <div class="temp-display"><span class="temp-current">${sp.current_temp != null ? sp.current_temp.toFixed(1) : '--'}</span><span class="temp-unit">°C</span>
             <div class="temp-target">Target: ${sp.target_temp != null ? sp.target_temp.toFixed(1) + '°C' : '--'}</div></div>
           <div class="meta-row"><span class="meta-label">Mode</span><span style="color:${MODE_COLORS[sp.schedule_mode] || '#fff'}">${(sp.schedule_mode || '').charAt(0).toUpperCase() + (sp.schedule_mode || '').slice(1)}</span></div>
@@ -153,11 +156,48 @@ class TurziThermostatPanel extends HTMLElement {
           <div class="meta-row"><span class="meta-label">Comfort</span><span style="color:${scoreColor}">${score}${score !== '--' ? '/100' : ''}</span></div>
           ${score !== '--' ? `<div class="comfort-bar"><div class="comfort-fill" style="width:${score}%;background:${scoreColor}"></div></div>` : ''}
           ${sp.strategy_reason ? `<div class="meta-row" style="border:none;margin-top:8px"><span style="font-size:12px;color:var(--turzi-muted);font-style:italic">💡 ${sp.strategy_reason}</span></div>` : ''}
+          <details style="margin-top:12px">
+            <summary style="cursor:pointer;font-size:13px;color:var(--turzi-muted);list-style:none;display:flex;align-items:center;gap:6px">
+              <span>✏️ Override</span>
+            </summary>
+            <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px">
+              <div style="display:flex;gap:8px;align-items:center">
+                <label style="font-size:12px;color:var(--turzi-muted);min-width:90px">Temp (°C)</label>
+                <input type="number" step="0.5" min="10" max="35" value="${sp.override_temp ?? sp.target_temp ?? 21}"
+                  class="ov-temp" style="flex:1;padding:6px 10px;border-radius:8px;border:1px solid var(--turzi-border);background:var(--turzi-bg);color:var(--turzi-text)">
+              </div>
+              <div style="display:flex;gap:8px;align-items:center">
+                <label style="font-size:12px;color:var(--turzi-muted);min-width:90px">Mode</label>
+                <select class="ov-mode" style="flex:1;padding:6px 10px;border-radius:8px;border:1px solid var(--turzi-border);background:var(--turzi-bg);color:var(--turzi-text)">
+                  <option value="">— Use schedule —</option>
+                  ${['comfort','eco','sleep','away','boost'].map(m => `<option value="${m}" ${sp.override_mode === m ? 'selected' : ''}>${m.charAt(0).toUpperCase()+m.slice(1)}</option>`).join('')}
+                </select>
+              </div>
+              <div style="display:flex;gap:8px;justify-content:flex-end">
+                ${sp.has_override ? `<button class="secondary ov-clear" style="font-size:12px;padding:6px 12px">↩ Resume schedule</button>` : ''}
+                <button class="primary ov-set" style="font-size:12px;padding:6px 14px">Apply</button>
+              </div>
+            </div>
+          </details>
         </div>`;
       }
       html += '</div>';
     }
     c.innerHTML = html;
+    // Wire up override buttons
+    c.querySelectorAll('[data-space-id]').forEach(card => {
+      const spaceId = card.dataset.spaceId;
+      card.querySelector('.ov-set')?.addEventListener('click', async () => {
+        const temp = parseFloat(card.querySelector('.ov-temp').value);
+        const mode = card.querySelector('.ov-mode').value || null;
+        await this._ws('turzi_thermostat/set_override', { space_id: spaceId, temp: isNaN(temp) ? null : temp, mode });
+        this._dashboard = null; await this._loadDashboard();
+      });
+      card.querySelector('.ov-clear')?.addEventListener('click', async () => {
+        await this._ws('turzi_thermostat/clear_override', { space_id: spaceId });
+        this._dashboard = null; await this._loadDashboard();
+      });
+    });
   }
 
   // === ZONES TAB ===
@@ -194,21 +234,20 @@ class TurziThermostatPanel extends HTMLElement {
     const s = this.shadowRoot;
     const div = document.createElement('div');
     div.className = 'modal-backdrop';
-    const optionsHtml = (list, selected) => (list || []).map(e =>
-      `<option value="${e.entity_id}" ${e.entity_id === selected ? 'selected' : ''}>${e.name}</option>`
-    ).join('');
     div.innerHTML = `<div class="modal"><h2>${editId ? 'Edit' : 'Add'} Zone</h2>
       <div class="form-group"><label>Name</label><input id="zName" value="${existing?.name || ''}"></div>
       <div class="form-group"><label>HVAC System</label><select id="zType">
         ${['floor_heating','radiator','fan_coil','split_ac'].map(t => `<option value="${t}" ${existing?.hvac_type === t ? 'selected' : ''}>${t.replace(/_/g,' ')}</option>`).join('')}</select></div>
-      <div class="form-group"><label>Temperature Sensor</label><select id="zTemp"><option value="">Select...</option>${optionsHtml(ents?.temperature_sensors, existing?.temp_sensor)}</select></div>
-      <div class="form-group"><label>Humidity Sensor (optional)</label><select id="zHum"><option value="">None</option>${optionsHtml(ents?.humidity_sensors, existing?.humidity_sensor)}</select></div>
-      <div class="form-group"><label>Heating Output</label><select id="zHeat"><option value="">Select...</option>${optionsHtml(ents?.heating_outputs, existing?.heating_output)}</select></div>
-      <div class="form-group"><label>Cooling Output (optional)</label><select id="zCool"><option value="">None</option>${optionsHtml(ents?.cooling_outputs, existing?.cooling_output)}</select></div>
+      <div class="form-group"><label>Temperature Sensor</label>${this._ssHtml('zTemp', ents?.temperature_sensors || [], existing?.temp_sensor, 'Search sensors...')}</div>
+      <div class="form-group"><label>Humidity Sensor <span style="color:var(--turzi-muted);font-size:12px">(optional)</span></label>${this._ssHtml('zHum', ents?.humidity_sensors || [], existing?.humidity_sensor, 'None')}</div>
+      <div class="form-group"><label>Heating Output</label>${this._ssHtml('zHeat', ents?.heating_outputs || [], existing?.heating_output, 'Search outputs...')}</div>
+      <div class="form-group"><label>Cooling Output <span style="color:var(--turzi-muted);font-size:12px">(optional)</span></label>${this._ssHtml('zCool', ents?.cooling_outputs || [], existing?.cooling_output, 'None')}</div>
+      <div class="form-group"><label>Auxiliary Heating <span style="color:var(--turzi-muted);font-size:12px">(optional)</span></label>${this._ssHtml('zAux', [...(ents?.heating_outputs||[]), ...(ents?.switches||[])], existing?.auxiliary_heating, 'None')}</div>
       <div class="form-group"><label>Target Temperature (°C)</label><input id="zTarget" type="number" step="0.5" min="5" max="35" value="${existing?.target_temp || 21}"></div>
       <div class="btn-row">${editId ? `<button class="secondary" id="zDel" style="margin-right:auto;color:#ef4444">Delete</button>` : ''}
         <button class="secondary" id="zCancel">Cancel</button><button class="primary" id="zSave">Save</button></div></div>`;
     s.appendChild(div);
+    this._initSearchableSelects(div);
     div.querySelector('#zCancel').addEventListener('click', () => div.remove());
     div.querySelector('#zDel')?.addEventListener('click', async () => {
       await this._ws('turzi_thermostat/delete_space', { space_id: editId });
@@ -218,15 +257,63 @@ class TurziThermostatPanel extends HTMLElement {
       const space = {
         name: div.querySelector('#zName').value,
         hvac_type: div.querySelector('#zType').value,
-        temp_sensor: div.querySelector('#zTemp').value,
-        humidity_sensor: div.querySelector('#zHum').value || null,
-        heating_output: div.querySelector('#zHeat').value,
-        cooling_output: div.querySelector('#zCool').value || null,
+        temp_sensor: div.querySelector('#zTemp-val').value,
+        humidity_sensor: div.querySelector('#zHum-val').value || null,
+        heating_output: div.querySelector('#zHeat-val').value,
+        cooling_output: div.querySelector('#zCool-val').value || null,
+        auxiliary_heating: div.querySelector('#zAux-val').value || null,
         target_temp: parseFloat(div.querySelector('#zTarget').value),
       };
       if (!space.name || !space.temp_sensor || !space.heating_output) { alert('Name, temp sensor, and heating output are required.'); return; }
       await this._ws('turzi_thermostat/save_spaces', { spaces: [space] });
       div.remove(); this._entities = null; await this._loadConfig(); this._setTab('zones');
+    });
+  }
+
+  // --- Searchable entity selector ---
+  _ssHtml(id, options, selectedValue, placeholder = 'Search...') {
+    const selected = options.find(o => o.entity_id === selectedValue);
+    const display = selected ? `${selected.name} (${selected.entity_id})` : (selectedValue || '');
+    const opts = options.map(o =>
+      `<div class="ss-opt" data-val="${o.entity_id}">${o.name} <span style="opacity:.5;font-size:11px">${o.entity_id}</span></div>`
+    ).join('');
+    return `<div class="ss-wrap" style="position:relative">
+      <input id="${id}-search" class="ss-search" autocomplete="off" spellcheck="false"
+        placeholder="${placeholder}" value="${display}"
+        style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--turzi-border);background:var(--turzi-bg);color:var(--turzi-text)">
+      <input type="hidden" id="${id}-val" value="${selectedValue || ''}">
+      <div class="ss-drop" style="display:none;position:absolute;z-index:200;left:0;right:0;top:100%;margin-top:2px;max-height:200px;overflow-y:auto;border-radius:8px;border:1px solid var(--turzi-border);background:var(--turzi-surface);box-shadow:0 8px 24px #0008">
+        <div class="ss-opt" data-val="" style="opacity:.6;font-style:italic">— None —</div>
+        ${opts}
+      </div>
+    </div>`;
+  }
+
+  _initSearchableSelects(container) {
+    container.querySelectorAll('.ss-wrap').forEach(wrap => {
+      const search = wrap.querySelector('.ss-search');
+      const val = wrap.querySelector('.ss-search + input[type=hidden], input[type=hidden]');
+      const drop = wrap.querySelector('.ss-drop');
+      const opts = () => [...drop.querySelectorAll('.ss-opt')];
+
+      const show = () => { drop.style.display = 'block'; filter(); };
+      const hide = () => setTimeout(() => { drop.style.display = 'none'; }, 150);
+      const filter = () => {
+        const q = search.value.toLowerCase();
+        opts().forEach(o => { o.style.display = o.textContent.toLowerCase().includes(q) ? '' : 'none'; });
+      };
+
+      search.addEventListener('focus', show);
+      search.addEventListener('input', filter);
+      search.addEventListener('blur', hide);
+
+      drop.addEventListener('mousedown', e => {
+        const opt = e.target.closest('.ss-opt');
+        if (!opt) return;
+        val.value = opt.dataset.val;
+        search.value = opt.dataset.val ? opt.innerText.trim() : '';
+        drop.style.display = 'none';
+      });
     });
   }
 
@@ -461,10 +548,6 @@ class TurziThermostatPanel extends HTMLElement {
     const currentMode = settings.seasonal_mode || 'auto';
     const currentSwitch = settings.seasonal_switch_entity || '';
 
-    const switchOptions = switches.map(e =>
-      `<option value="${e.entity_id}" ${e.entity_id === currentSwitch ? 'selected' : ''}>${e.name} (${e.entity_id})</option>`
-    ).join('');
-
     c.innerHTML = `
       <h2 style="margin-bottom:24px">Settings</h2>
 
@@ -490,10 +573,7 @@ class TurziThermostatPanel extends HTMLElement {
             If your HVAC has a physical winter/summer switch entity, select it here.
             The system will automatically toggle it (ON = winter, OFF = summer).
           </p>
-          <select id="sSeasonalSwitch">
-            <option value="">None</option>
-            ${switchOptions}
-          </select>
+          ${this._ssHtml('sSeasonalSwitch', switches, currentSwitch, 'Search switches...')}
         </div>
       </div>
 
@@ -529,10 +609,12 @@ class TurziThermostatPanel extends HTMLElement {
         <button class="primary" id="sSave">Save Settings</button>
       </div>`;
 
+    this._initSearchableSelects(c);
+
     c.querySelector('#sSave').addEventListener('click', async () => {
       const newSettings = {
         seasonal_mode: c.querySelector('#sSeasonalMode').value,
-        seasonal_switch_entity: c.querySelector('#sSeasonalSwitch').value || null,
+        seasonal_switch_entity: c.querySelector('#sSeasonalSwitch-val').value || null,
         humidity_compensation: c.querySelector('#sHumidity').checked,
         wind_compensation: c.querySelector('#sWind').checked,
         preconditioning_enabled: c.querySelector('#sPrecon').checked,
