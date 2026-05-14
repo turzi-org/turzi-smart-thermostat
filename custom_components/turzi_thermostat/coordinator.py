@@ -128,14 +128,14 @@ class TurziCoordinator(DataUpdateCoordinator[TurziData]):
 
             # Process each space
             for space_id, space_config in self.store.spaces.items():
-                space_data = self._process_space(
+                space_data = await self._process_space(
                     space_id, space_config, outdoor_temp, outdoor_humidity,
                     wind_speed, forecast_temps, settings,
                 )
                 data.spaces[space_id] = space_data
 
                 # Execute control action
-                await self._execute_action(space_id, space_config, space_data)
+                await self._execute_action(space_id, space_config, space_data, settings)
 
             return data
 
@@ -143,7 +143,7 @@ class TurziCoordinator(DataUpdateCoordinator[TurziData]):
             _LOGGER.error("Error updating Turzi thermostat: %s", err)
             raise UpdateFailed(f"Update failed: {err}") from err
 
-    def _process_space(
+    async def _process_space(
         self,
         space_id: str,
         config: dict,
@@ -200,16 +200,6 @@ class TurziCoordinator(DataUpdateCoordinator[TurziData]):
 
         # Resolve seasonal mode
         seasonal_mode = settings.get("seasonal_mode", "auto")
-        seasonal_switch = settings.get("seasonal_switch_entity")
-
-        # If there's a seasonal switch, control it based on mode
-        if seasonal_switch and seasonal_mode in ("winter", "summer"):
-            switch_state = self._read_sensor_state(seasonal_switch)
-            # Convention: switch ON = winter mode, switch OFF = summer mode
-            if seasonal_mode == "winter" and switch_state == "off":
-                await self._control_output(seasonal_switch, True)
-            elif seasonal_mode == "summer" and switch_state == "on":
-                await self._control_output(seasonal_switch, False)
 
         # Strategy
         strategy = self.strategy_engine.evaluate(
@@ -234,7 +224,7 @@ class TurziCoordinator(DataUpdateCoordinator[TurziData]):
         # Determine HVAC action from strategy
         action_map = {
             "heat": HVACAction.HEATING,
-            "pre_heat": HVACAction.PREHEATING,
+            "pre_heat": HVACAction.HEATING,
             "cool": HVACAction.COOLING,
             "pre_cool": HVACAction.COOLING,
             "idle": HVACAction.IDLE,
@@ -310,11 +300,21 @@ class TurziCoordinator(DataUpdateCoordinator[TurziData]):
             _LOGGER.debug("Could not get %s forecast: %s", forecast_type, err)
         return []
 
-    async def _execute_action(self, space_id: str, config: dict, space_data: SpaceData) -> None:
+    async def _execute_action(self, space_id: str, config: dict, space_data: SpaceData, settings: dict) -> None:
         """Execute the strategy's decision on the underlying entity."""
         strategy = space_data.strategy
         if not strategy:
             return
+
+        # Control seasonal HVAC switch if configured
+        seasonal_switch = settings.get("seasonal_switch_entity")
+        seasonal_mode = settings.get("seasonal_mode", "auto")
+        if seasonal_switch and seasonal_mode in ("winter", "summer"):
+            switch_state = self._read_sensor_state(seasonal_switch)
+            if seasonal_mode == "winter" and switch_state == "off":
+                await self._control_output(seasonal_switch, True)
+            elif seasonal_mode == "summer" and switch_state == "on":
+                await self._control_output(seasonal_switch, False)
 
         heating_output = config.get("heating_output")
         cooling_output = config.get("cooling_output")

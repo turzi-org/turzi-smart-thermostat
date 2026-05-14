@@ -136,6 +136,41 @@ def pmv_to_comfort_score(pmv: float) -> float:
     return max(0.0, min(100.0, round(score, 1)))
 
 
+class ComfortResult:
+    """Result of a comfort calculation."""
+
+    def __init__(
+        self,
+        score: float | None,
+        temp_adjustment: float,
+        humidity_adjustment: float,
+        wind_adjustment: float,
+        total_adjustment: float,
+        pmv: float | None,
+        reason: str,
+    ) -> None:
+        """Initialize comfort result."""
+        self.score = score
+        self.temp_adjustment = temp_adjustment
+        self.humidity_adjustment = humidity_adjustment
+        self.wind_adjustment = wind_adjustment
+        self.total_adjustment = total_adjustment
+        self.pmv = pmv
+        self.reason = reason
+
+    def as_dict(self) -> dict:
+        """Return as dictionary for serialization."""
+        return {
+            "score": self.score,
+            "temp_adjustment": self.temp_adjustment,
+            "humidity_adjustment": self.humidity_adjustment,
+            "wind_adjustment": self.wind_adjustment,
+            "total_adjustment": self.total_adjustment,
+            "pmv": self.pmv,
+            "reason": self.reason,
+        }
+
+
 def calculate_comfort(
     indoor_temp: float | None,
     indoor_humidity: float | None,
@@ -229,38 +264,3 @@ def calculate_comfort(
         pmv=round(pmv, 2),
         reason="; ".join(reasons) if reasons else "Comfortable",
     )
-
-
-class ComfortResult:
-    """Result of a comfort calculation."""
-
-    def __init__(
-        self,
-        score: float | None,
-        temp_adjustment: float,
-        humidity_adjustment: float,
-        wind_adjustment: float,
-        total_adjustment: float,
-        pmv: float | None,
-        reason: str,
-    ) -> None:
-        """Initialize comfort result."""
-        self.score = score
-        self.temp_adjustment = temp_adjustment
-        self.humidity_adjustment = humidity_adjustment
-        self.wind_adjustment = wind_adjustment
-        self.total_adjustment = total_adjustment
-        self.pmv = pmv
-        self.reason = reason
-
-    def as_dict(self) -> dict:
-        """Return as dictionary for serialization."""
-        return {
-            "score": self.score,
-            "temp_adjustment": self.temp_adjustment,
-            "humidity_adjustment": self.humidity_adjustment,
-            "wind_adjustment": self.wind_adjustment,
-            "total_adjustment": self.total_adjustment,
-            "pmv": self.pmv,
-            "reason": self.reason,
-        }

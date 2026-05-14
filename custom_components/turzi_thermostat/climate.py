@@ -224,7 +224,4 @@ class TurziClimateEntity(CoordinatorEntity[TurziCoordinator], ClimateEntity):
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
-        # If we're in AUTO mode and the schedule mode changed, clear manual overrides
-        if self._current_hvac_mode == HVACMode.AUTO:
-            self.coordinator.clear_manual_override(self._space_id)
         self.async_write_ha_state()

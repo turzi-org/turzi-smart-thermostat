@@ -60,29 +60,31 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "store": store,
     }
 
-    # Register frontend panel (static path + sidebar entry)
-    await hass.http.async_register_static_paths([
-        StaticPathConfig(
-            url_path="/turzi_thermostat_panel",
-            path=PANEL_FRONTEND_PATH,
-            cache_headers=False,
-        )
-    ])
+    # Register frontend panel (static path + sidebar entry) — only once
+    if f"{DOMAIN}_panel_registered" not in hass.data:
+        await hass.http.async_register_static_paths([
+            StaticPathConfig(
+                url_path="/turzi_thermostat_panel",
+                path=PANEL_FRONTEND_PATH,
+                cache_headers=False,
+            )
+        ])
 
-    frontend.async_register_built_in_panel(
-        hass,
-        component_name="custom",
-        sidebar_title=PANEL_TITLE,
-        sidebar_icon=PANEL_ICON,
-        frontend_url_path=PANEL_URL,
-        config={
-            "_panel_custom": {
-                "name": "turzi-thermostat-panel",
-                "module_url": "/turzi_thermostat_panel/panel.js",
-            }
-        },
-        require_admin=False,
-    )
+        frontend.async_register_built_in_panel(
+            hass,
+            component_name="custom",
+            sidebar_title=PANEL_TITLE,
+            sidebar_icon=PANEL_ICON,
+            frontend_url_path=PANEL_URL,
+            config={
+                "_panel_custom": {
+                    "name": "turzi-thermostat-panel",
+                    "module_url": "/turzi_thermostat_panel/panel.js",
+                }
+            },
+            require_admin=False,
+        )
+        hass.data[f"{DOMAIN}_panel_registered"] = True
 
     # Initial data fetch
     await coordinator.async_config_entry_first_refresh()
