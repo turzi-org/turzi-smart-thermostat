@@ -48,13 +48,20 @@ async def async_setup_entry(
     """Set up climate entities from a config entry."""
     coordinator: TurziCoordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
 
+    # Track which spaces already have entities
+    known_ids: set[str] = set()
     entities = []
     for space_id, space_config in coordinator.store.spaces.items():
         entities.append(
             TurziClimateEntity(coordinator, entry, space_id, space_config)
         )
+        known_ids.add(space_id)
 
     async_add_entities(entities)
+
+    # Store callback for dynamic entity creation when zones are added via panel
+    hass.data[DOMAIN][entry.entry_id]["climate_add_entities"] = async_add_entities
+    hass.data[DOMAIN][entry.entry_id]["climate_known_ids"] = known_ids
 
 
 class TurziClimateEntity(CoordinatorEntity[TurziCoordinator], ClimateEntity):

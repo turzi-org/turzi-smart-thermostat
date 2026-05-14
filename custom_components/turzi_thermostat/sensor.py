@@ -31,6 +31,7 @@ async def async_setup_entry(
     coordinator: TurziCoordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
     entities: list[SensorEntity] = []
 
+    known_ids: set[str] = set()
     for space_id, space_config in coordinator.store.spaces.items():
         name = space_config.get("name", space_id)
         entities.extend([
@@ -40,11 +41,16 @@ async def async_setup_entry(
             TurziEnergyTierSensor(coordinator, entry, space_id, name),
             TurziStrategySensor(coordinator, entry, space_id, name),
         ])
+        known_ids.add(space_id)
 
     # Global sensors
     entities.append(TurziOutdoorFeelsLikeSensor(coordinator, entry))
 
     async_add_entities(entities)
+
+    # Store callback for dynamic entity creation when zones are added via panel
+    hass.data[DOMAIN][entry.entry_id]["sensor_add_entities"] = async_add_entities
+    hass.data[DOMAIN][entry.entry_id]["sensor_known_ids"] = known_ids
 
 
 class TurziBaseSensor(CoordinatorEntity[TurziCoordinator], SensorEntity):

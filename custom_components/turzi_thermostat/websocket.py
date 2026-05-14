@@ -16,6 +16,75 @@ from .const import DOMAIN, HvacSystemType, ComfortSensitivity
 _LOGGER = logging.getLogger(__name__)
 
 
+def _create_entities_for_new_spaces(
+    hass: HomeAssistant,
+    entry_data: dict,
+    entry_id: str,
+    space_ids: list[str],
+) -> None:
+    """Create climate and sensor entities for newly added spaces."""
+    from .climate import TurziClimateEntity
+    from .sensor import (
+        TurziComfortScoreSensor,
+        TurziEffectiveTargetSensor,
+        TurziScheduleModeSensor,
+        TurziEnergyTierSensor,
+        TurziStrategySensor,
+    )
+
+    store = entry_data["store"]
+    coordinator = entry_data["coordinator"]
+
+    # Get the config entry from hass
+    entry = hass.config_entries.async_get_entry(entry_id)
+    if not entry:
+        return
+
+    climate_add = entry_data.get("climate_add_entities")
+    climate_known = entry_data.get("climate_known_ids", set())
+    sensor_add = entry_data.get("sensor_add_entities")
+    sensor_known = entry_data.get("sensor_known_ids", set())
+
+    new_climate = []
+    new_sensors = []
+
+    for space_id in space_ids:
+        if space_id in climate_known:
+            continue  # Already has entities
+
+        space_config = store.spaces.get(space_id)
+        if not space_config:
+            continue
+
+        name = space_config.get("name", space_id)
+
+        # Climate entity
+        if climate_add:
+            new_climate.append(
+                TurziClimateEntity(coordinator, entry, space_id, space_config)
+            )
+            climate_known.add(space_id)
+
+        # Sensor entities
+        if sensor_add:
+            new_sensors.extend([
+                TurziComfortScoreSensor(coordinator, entry, space_id, name),
+                TurziEffectiveTargetSensor(coordinator, entry, space_id, name),
+                TurziScheduleModeSensor(coordinator, entry, space_id, name),
+                TurziEnergyTierSensor(coordinator, entry, space_id, name),
+                TurziStrategySensor(coordinator, entry, space_id, name),
+            ])
+            sensor_known.add(space_id)
+
+    if new_climate and climate_add:
+        climate_add(new_climate)
+        _LOGGER.info("Dynamically added %d climate entities", len(new_climate))
+
+    if new_sensors and sensor_add:
+        sensor_add(new_sensors)
+        _LOGGER.info("Dynamically added %d sensor entities", len(new_sensors))
+
+
 def async_register_websocket_commands(hass: HomeAssistant) -> None:
     """Register all websocket commands."""
     websocket_api.async_register_command(hass, ws_get_config)
@@ -98,6 +167,7 @@ async def ws_save_spaces(
     store = entry_data["store"]
     coordinator = entry_data["coordinator"]
 
+    new_space_ids = []
     for space in msg["spaces"]:
         space_id = _slugify(space["name"])
         store.add_space(
@@ -112,9 +182,14 @@ async def ws_save_spaces(
             target_temp=space.get("target_temp", 21.0),
             comfort_sensitivity=space.get("comfort_sensitivity", "medium"),
         )
+        new_space_ids.append(space_id)
 
     await store.async_save()
     await coordinator.async_request_refresh()
+
+    # Dynamically create entities for any new spaces
+    _create_entities_for_new_spaces(hass, entry_data, msg["entry_id"], new_space_ids)
+
     connection.send_result(msg["id"], {"success": True, "spaces": store.spaces})
 
 
