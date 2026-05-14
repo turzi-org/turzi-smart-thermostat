@@ -111,6 +111,7 @@ class TurziStore:
         heating_output: str,
         humidity_sensor: str | None = None,
         cooling_output: str | None = None,
+        auxiliary_heating: str | None = None,
         target_temp: float = DEFAULT_TARGET_TEMP,
         comfort_sensitivity: str = "medium",
     ) -> None:
@@ -122,6 +123,7 @@ class TurziStore:
             "humidity_sensor": humidity_sensor,
             "heating_output": heating_output,
             "cooling_output": cooling_output,
+            "auxiliary_heating": auxiliary_heating,
             "target_temp": target_temp,
             "comfort_sensitivity": comfort_sensitivity,
         }

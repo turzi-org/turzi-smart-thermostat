@@ -77,6 +77,7 @@ async def ws_get_config(
             vol.Optional("humidity_sensor"): vol.Any(str, None),
             vol.Required("heating_output"): str,
             vol.Optional("cooling_output"): vol.Any(str, None),
+            vol.Optional("auxiliary_heating"): vol.Any(str, None),
             vol.Optional("target_temp", default=21.0): vol.Coerce(float),
             vol.Optional("comfort_sensitivity", default="medium"): vol.In([e.value for e in ComfortSensitivity]),
         }
@@ -107,6 +108,7 @@ async def ws_save_spaces(
             humidity_sensor=space.get("humidity_sensor"),
             heating_output=space["heating_output"],
             cooling_output=space.get("cooling_output"),
+            auxiliary_heating=space.get("auxiliary_heating"),
             target_temp=space.get("target_temp", 21.0),
             comfort_sensitivity=space.get("comfort_sensitivity", "medium"),
         )

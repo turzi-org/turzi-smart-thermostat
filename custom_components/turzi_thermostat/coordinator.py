@@ -214,6 +214,7 @@ class TurziCoordinator(DataUpdateCoordinator[TurziData]):
             energy_is_low=energy_is_low,
             next_tier_change=next_tier_change,
             preconditioning_enabled=settings.get("preconditioning_enabled", True),
+            has_auxiliary=bool(config.get("auxiliary_heating")),
         )
 
         # Determine HVAC action from strategy
@@ -294,9 +295,15 @@ class TurziCoordinator(DataUpdateCoordinator[TurziData]):
 
         heating_output = config.get("heating_output")
         cooling_output = config.get("cooling_output")
+        auxiliary_heating = config.get("auxiliary_heating")
 
         if strategy.action in ("heat", "pre_heat"):
             await self._control_output(heating_output, True, strategy.target_temp)
+            # Engage auxiliary heating if strategy recommends it
+            if strategy.use_auxiliary and auxiliary_heating:
+                await self._control_output(auxiliary_heating, True, strategy.target_temp)
+            elif auxiliary_heating:
+                await self._control_output(auxiliary_heating, False)
             if cooling_output:
                 await self._control_output(cooling_output, False)
         elif strategy.action in ("cool", "pre_cool"):
@@ -304,16 +311,15 @@ class TurziCoordinator(DataUpdateCoordinator[TurziData]):
                 await self._control_output(cooling_output, True, strategy.target_temp)
             if heating_output:
                 await self._control_output(heating_output, False)
-        elif strategy.action == "idle":
+            if auxiliary_heating:
+                await self._control_output(auxiliary_heating, False)
+        elif strategy.action in ("idle", "off"):
             if heating_output:
                 await self._control_output(heating_output, False)
             if cooling_output:
                 await self._control_output(cooling_output, False)
-        elif strategy.action == "off":
-            if heating_output:
-                await self._control_output(heating_output, False)
-            if cooling_output:
-                await self._control_output(cooling_output, False)
+            if auxiliary_heating:
+                await self._control_output(auxiliary_heating, False)
 
     async def _control_output(self, entity_id: str | None, turn_on: bool, target_temp: float | None = None) -> None:
         """Control an output entity (switch or climate)."""

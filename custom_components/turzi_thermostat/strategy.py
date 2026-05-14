@@ -30,6 +30,8 @@ class SpaceStrategy:
     target_temp: float | None
     energy_note: str | None
     confidence: float  # 0.0–1.0
+    use_auxiliary: bool = False  # engage auxiliary heating (e.g., A/C boost)
+    auxiliary_reason: str | None = None
 
     def as_dict(self) -> dict:
         return {
@@ -38,6 +40,8 @@ class SpaceStrategy:
             "target_temp": self.target_temp,
             "energy_note": self.energy_note,
             "confidence": self.confidence,
+            "use_auxiliary": self.use_auxiliary,
+            "auxiliary_reason": self.auxiliary_reason,
         }
 
 
@@ -79,6 +83,7 @@ class StrategyEngine:
         energy_is_low: bool,
         next_tier_change: datetime | None,
         preconditioning_enabled: bool = True,
+        has_auxiliary: bool = False,
     ) -> SpaceStrategy:
         """Evaluate and return the best strategy for a space.
 
@@ -137,26 +142,27 @@ class StrategyEngine:
 
         # --- Standard thermostat logic ---
         hysteresis = 0.3  # °C deadband
+        energy_note = f"Current tier: {energy_tier}" if energy_tier else None
+
         if delta > hysteresis:
+            # Check if auxiliary heating should kick in
+            aux, aux_reason = self._should_use_auxiliary(
+                hvac_type, delta, has_auxiliary, thermal,
+            )
             return SpaceStrategy(
                 action="heat", reason=f"Heating: {current_temp:.1f}°C → {target_temp:.1f}°C",
-                target_temp=target_temp,
-                energy_note=f"Current tier: {energy_tier}" if energy_tier else None,
-                confidence=confidence,
+                target_temp=target_temp, energy_note=energy_note,
+                confidence=confidence, use_auxiliary=aux, auxiliary_reason=aux_reason,
             )
         elif delta < -hysteresis:
             return SpaceStrategy(
                 action="cool", reason=f"Cooling: {current_temp:.1f}°C → {target_temp:.1f}°C",
-                target_temp=target_temp,
-                energy_note=f"Current tier: {energy_tier}" if energy_tier else None,
-                confidence=confidence,
+                target_temp=target_temp, energy_note=energy_note, confidence=confidence,
             )
         else:
             return SpaceStrategy(
                 action="idle", reason=f"At target ({current_temp:.1f}°C ≈ {target_temp:.1f}°C)",
-                target_temp=target_temp,
-                energy_note=f"Current tier: {energy_tier}" if energy_tier else None,
-                confidence=confidence,
+                target_temp=target_temp, energy_note=energy_note, confidence=confidence,
             )
 
     def _check_preconditioning(
@@ -270,3 +276,45 @@ class StrategyEngine:
         if samples >= 7:
             return 0.6
         return 0.3
+
+    def _should_use_auxiliary(
+        self,
+        hvac_type: str,
+        delta: float,
+        has_auxiliary: bool,
+        thermal: dict,
+    ) -> tuple[bool, str | None]:
+        """Determine if auxiliary heating should engage.
+
+        Auxiliary kicks in when:
+        - The zone has an auxiliary output configured
+        - The primary system is slow (floor heating, radiator) AND
+        - The temperature gap is large (> 1.5°C) or the primary
+          can't reach target within a reasonable time
+        """
+        if not has_auxiliary:
+            return False, None
+
+        slow_systems = {"floor_heating", "radiator"}
+        if hvac_type not in slow_systems:
+            return False, None
+
+        heat_up_rate = thermal.get("heat_up_rate", 1.0)
+        hours_to_target = delta / heat_up_rate if heat_up_rate > 0 else 999
+
+        # Large gap: auxiliary boosts immediately
+        if delta > 1.5:
+            return True, (
+                f"Auxiliary boost: {delta:.1f}°C gap, "
+                f"{hvac_type.replace('_', ' ')} alone needs ~{hours_to_target:.1f}h"
+            )
+
+        # Primary too slow: would take > 2 hours
+        if hours_to_target > 2.0 and delta > 0.5:
+            return True, (
+                f"Auxiliary assist: {hvac_type.replace('_', ' ')} "
+                f"needs ~{hours_to_target:.1f}h, engaging auxiliary to speed up"
+            )
+
+        return False, None
+
