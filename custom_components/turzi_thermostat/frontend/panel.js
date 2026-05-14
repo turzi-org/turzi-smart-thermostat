@@ -164,7 +164,7 @@ class TurziThermostatPanel extends HTMLElement {
         const score = sp.comfort_score != null ? sp.comfort_score : '--';
         const scoreColor = score >= 70 ? '#22c55e' : score >= 40 ? '#f59e0b' : '#ef4444';
         const overrideBadge = sp.has_override
-          ? `<span style="font-size:11px;background:#f59e0b22;color:#f59e0b;border:1px solid #f59e0b44;border-radius:6px;padding:2px 8px;margin-left:8px">✏️ Override</span>`
+          ? `<button class="ov-badge-clear" title="Click to resume schedule" style="font-size:11px;background:#f59e0b22;color:#f59e0b;border:1px solid #f59e0b55;border-radius:6px;padding:2px 8px;margin-left:8px;cursor:pointer">✏️ Override ✕</button>`
           : '';
         const ovOpen = this._ovOpen?.has(id);
         html += `<div class="card" data-space-id="${id}">
@@ -206,6 +206,13 @@ class TurziThermostatPanel extends HTMLElement {
     if (!this._ovOpen) this._ovOpen = new Set();
     c.querySelectorAll('[data-space-id]').forEach(card => {
       const spaceId = card.dataset.spaceId;
+      // Badge click = instant clear (most discoverable path)
+      card.querySelector('.ov-badge-clear')?.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await this._ws('turzi_thermostat/clear_override', { space_id: spaceId });
+        this._ovOpen.delete(spaceId);
+        await this._loadDashboard();
+      });
       // Toggle open/close without re-render
       card.querySelector('.ov-toggle')?.addEventListener('click', () => {
         const body = card.querySelector('.ov-body');
