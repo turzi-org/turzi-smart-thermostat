@@ -57,6 +57,14 @@ SCHEDULE_MODE_OFFSETS: dict[str, float | None] = {
 
 BOOST_DURATION_MINUTES = 30
 
+
+class SeasonalMode(StrEnum):
+    """Seasonal operating mode — controls which actions are allowed."""
+
+    WINTER = "winter"   # Heating only (no cooling)
+    SUMMER = "summer"   # Cooling only (no heating)
+    AUTO = "auto"       # Both heating and cooling allowed
+
 # Comfort sensitivity presets
 class ComfortSensitivity(StrEnum):
     """How aggressively to correct temperature deviations."""

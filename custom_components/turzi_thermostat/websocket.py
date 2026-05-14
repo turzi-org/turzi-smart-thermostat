@@ -363,36 +363,32 @@ def ws_get_available_entities(
         "humidity_sensors": [],
         "heating_outputs": [],
         "cooling_outputs": [],
+        "switches": [],
     }
 
-    for entity_id, state in hass.states.items():
+    for state in hass.states.async_all():
+        entity_id = state.entity_id
         domain = entity_id.split(".")[0]
         attrs = state.attributes
         friendly_name = attrs.get("friendly_name", entity_id)
+        entry = {"entity_id": entity_id, "name": friendly_name}
 
         # Temperature sensors
         if domain == "sensor" and attrs.get("device_class") == "temperature":
-            result["temperature_sensors"].append({
-                "entity_id": entity_id,
-                "name": friendly_name,
-            })
+            result["temperature_sensors"].append(entry)
 
         # Humidity sensors
         if domain == "sensor" and attrs.get("device_class") == "humidity":
-            result["humidity_sensors"].append({
-                "entity_id": entity_id,
-                "name": friendly_name,
-            })
+            result["humidity_sensors"].append(entry)
 
-        # Switches (potential heating/cooling outputs)
+        # Switches (potential heating/cooling outputs + seasonal mode toggle)
         if domain == "switch":
-            entry = {"entity_id": entity_id, "name": friendly_name}
             result["heating_outputs"].append(entry)
             result["cooling_outputs"].append(entry)
+            result["switches"].append(entry)
 
         # Climate entities (potential heating/cooling outputs)
-        if domain == "climate" and not entity_id.startswith(f"climate.turzi_"):
-            entry = {"entity_id": entity_id, "name": friendly_name}
+        if domain == "climate" and not entity_id.startswith("climate.turzi_"):
             result["heating_outputs"].append(entry)
             result["cooling_outputs"].append(entry)
 

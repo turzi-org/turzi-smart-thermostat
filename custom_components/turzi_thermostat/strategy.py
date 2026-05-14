@@ -84,6 +84,7 @@ class StrategyEngine:
         next_tier_change: datetime | None,
         preconditioning_enabled: bool = True,
         has_auxiliary: bool = False,
+        seasonal_mode: str = "auto",
     ) -> SpaceStrategy:
         """Evaluate and return the best strategy for a space.
 
@@ -145,6 +146,12 @@ class StrategyEngine:
         energy_note = f"Current tier: {energy_tier}" if energy_tier else None
 
         if delta > hysteresis:
+            # Seasonal check: don't heat in summer mode
+            if seasonal_mode == "summer":
+                return SpaceStrategy(
+                    action="idle", reason=f"Summer mode — heating blocked ({current_temp:.1f}°C < {target_temp:.1f}°C)",
+                    target_temp=target_temp, energy_note=energy_note, confidence=confidence,
+                )
             # Check if auxiliary heating should kick in
             aux, aux_reason = self._should_use_auxiliary(
                 hvac_type, delta, has_auxiliary, thermal,
@@ -155,6 +162,12 @@ class StrategyEngine:
                 confidence=confidence, use_auxiliary=aux, auxiliary_reason=aux_reason,
             )
         elif delta < -hysteresis:
+            # Seasonal check: don't cool in winter mode
+            if seasonal_mode == "winter":
+                return SpaceStrategy(
+                    action="idle", reason=f"Winter mode — cooling blocked ({current_temp:.1f}°C > {target_temp:.1f}°C)",
+                    target_temp=target_temp, energy_note=energy_note, confidence=confidence,
+                )
             return SpaceStrategy(
                 action="cool", reason=f"Cooling: {current_temp:.1f}°C → {target_temp:.1f}°C",
                 target_temp=target_temp, energy_note=energy_note, confidence=confidence,

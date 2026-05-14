@@ -198,6 +198,19 @@ class TurziCoordinator(DataUpdateCoordinator[TurziData]):
         energy_is_low = self.energy_scheduler.is_low_rate(energy_tier)
         next_tier_change, _ = self.energy_scheduler.get_next_tier_change()
 
+        # Resolve seasonal mode
+        seasonal_mode = settings.get("seasonal_mode", "auto")
+        seasonal_switch = settings.get("seasonal_switch_entity")
+
+        # If there's a seasonal switch, control it based on mode
+        if seasonal_switch and seasonal_mode in ("winter", "summer"):
+            switch_state = self._read_sensor_state(seasonal_switch)
+            # Convention: switch ON = winter mode, switch OFF = summer mode
+            if seasonal_mode == "winter" and switch_state == "off":
+                await self._control_output(seasonal_switch, True)
+            elif seasonal_mode == "summer" and switch_state == "on":
+                await self._control_output(seasonal_switch, False)
+
         # Strategy
         strategy = self.strategy_engine.evaluate(
             space_id=space_id,
@@ -215,6 +228,7 @@ class TurziCoordinator(DataUpdateCoordinator[TurziData]):
             next_tier_change=next_tier_change,
             preconditioning_enabled=settings.get("preconditioning_enabled", True),
             has_auxiliary=bool(config.get("auxiliary_heating")),
+            seasonal_mode=seasonal_mode,
         )
 
         # Determine HVAC action from strategy
@@ -253,6 +267,15 @@ class TurziCoordinator(DataUpdateCoordinator[TurziData]):
             return float(state.state)
         except (ValueError, TypeError):
             return None
+
+    def _read_sensor_state(self, entity_id: str | None) -> str | None:
+        """Read the raw state string from any entity."""
+        if not entity_id:
+            return None
+        state = self.hass.states.get(entity_id)
+        if state is None or state.state in ("unknown", "unavailable"):
+            return None
+        return state.state
 
     def _read_weather(self) -> tuple[float | None, float | None, float | None, str | None]:
         """Read current weather from the weather entity."""

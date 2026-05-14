@@ -31,6 +31,8 @@ def _default_config() -> dict[str, Any]:
             "humidity_compensation": True,
             "wind_compensation": True,
             "preconditioning_enabled": True,
+            "seasonal_mode": "auto",
+            "seasonal_switch_entity": None,
         },
         "learned_thermal": {},
     }
