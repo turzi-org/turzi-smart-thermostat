@@ -387,6 +387,7 @@ async def ws_get_dashboard(
         connection.send_error(msg["id"], "not_found", "Integration entry not found")
         return
 
+    store = entry_data["store"]
     coordinator = entry_data["coordinator"]
     data = coordinator.data
 
@@ -401,20 +402,24 @@ async def ws_get_dashboard(
         },
     }
 
-    if data:
-        for space_id, space in data.spaces.items():
-            result["spaces"][space_id] = {
-                "name": space.name,
-                "hvac_type": space.hvac_type,
-                "current_temp": space.current_temp,
-                "current_humidity": space.current_humidity,
-                "target_temp": space.target_temp,
-                "schedule_mode": space.schedule_mode,
-                "hvac_action": space.hvac_action.value if space.hvac_action else "idle",
-                "comfort_score": space.comfort.score if space.comfort else None,
-                "energy_tier": space.energy_tier,
-                "strategy_reason": space.strategy.reason if space.strategy else None,
-            }
+    # Always iterate over store.spaces so we show all configured zones,
+    # even if the coordinator hasn't run an update cycle for them yet.
+    for space_id, space_config in store.spaces.items():
+        # Get live data if available, otherwise use fallback/null values
+        live_space = data.spaces.get(space_id) if data else None
+        
+        result["spaces"][space_id] = {
+            "name": space_config.get("name", space_id),
+            "hvac_type": space_config.get("hvac_type"),
+            "target_temp": live_space.target_temp if live_space else space_config.get("target_temp"),
+            "current_temp": live_space.current_temp if live_space else None,
+            "current_humidity": live_space.current_humidity if live_space else None,
+            "schedule_mode": live_space.schedule_mode if live_space else "comfort",
+            "hvac_action": live_space.hvac_action.value if live_space and live_space.hvac_action else "idle",
+            "comfort_score": live_space.comfort.score if live_space and live_space.comfort else None,
+            "energy_tier": live_space.energy_tier if live_space else None,
+            "strategy_reason": live_space.strategy.reason if live_space and live_space.strategy else None,
+        }
 
     connection.send_result(msg["id"], result)
 
