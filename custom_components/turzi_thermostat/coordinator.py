@@ -345,7 +345,12 @@ class TurziCoordinator(DataUpdateCoordinator[TurziData]):
                 await self._control_output(auxiliary_heating, False)
 
     async def _control_output(self, entity_id: str | None, turn_on: bool, target_temp: float | None = None) -> None:
-        """Control an output entity (switch or climate)."""
+        """Control an output entity (switch or climate).
+
+        Only sends commands when the state actually needs to change,
+        to avoid spamming devices (e.g., IR-controlled A/C units beep
+        on every command).
+        """
         if not entity_id:
             return
 
@@ -355,17 +360,27 @@ class TurziCoordinator(DataUpdateCoordinator[TurziData]):
             return
 
         domain = entity_id.split(".")[0]
+        current_state = state.state  # "on"/"off" for switches, hvac_mode for climate
 
         if domain == "switch":
-            service = "turn_on" if turn_on else "turn_off"
-            await self.hass.services.async_call("switch", service, {"entity_id": entity_id})
+            if turn_on and current_state != "on":
+                await self.hass.services.async_call("switch", "turn_on", {"entity_id": entity_id})
+            elif not turn_on and current_state != "off":
+                await self.hass.services.async_call("switch", "turn_off", {"entity_id": entity_id})
+
         elif domain == "climate":
             if turn_on and target_temp is not None:
-                await self.hass.services.async_call(
-                    "climate", "set_temperature",
-                    {"entity_id": entity_id, "temperature": target_temp},
-                )
-            elif not turn_on:
+                current_temp_target = state.attributes.get("temperature")
+                is_off = current_state == "off"
+                temp_changed = current_temp_target != target_temp
+
+                # Only send if turning on from off, or target temp changed
+                if is_off or temp_changed:
+                    await self.hass.services.async_call(
+                        "climate", "set_temperature",
+                        {"entity_id": entity_id, "temperature": target_temp},
+                    )
+            elif not turn_on and current_state != "off":
                 await self.hass.services.async_call(
                     "climate", "set_hvac_mode",
                     {"entity_id": entity_id, "hvac_mode": "off"},
