@@ -1,0 +1,62 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Turzi Smart Thermostat",
+        "description": "Set up your AI-powered smart thermostat. After setup, use the sidebar panel to configure zones, schedules, and energy rates.",
+        "data": {
+          "instance_name": "Instance name",
+          "weather_entity": "Weather entity (for forecasts)"
+        },
+        "data_description": {
+          "instance_name": "A name for this thermostat instance (e.g., 'My Home')",
+          "weather_entity": "Select the weather integration to use for outdoor conditions and forecasts"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "This integration is already configured."
+    },
+    "error": {
+      "invalid_weather_entity": "The selected entity is not a valid weather entity."
+    }
+  },
+  "entity": {
+    "climate": {
+      "turzi_thermostat": {
+        "name": "{space_name}",
+        "state_attributes": {
+          "preset_mode": {
+            "state": {
+              "comfort": "Comfort",
+              "eco": "Eco",
+              "sleep": "Sleep",
+              "away": "Away",
+              "boost": "Boost"
+            }
+          }
+        }
+      }
+    },
+    "sensor": {
+      "comfort_score": {
+        "name": "{space_name} Comfort Score"
+      },
+      "effective_target": {
+        "name": "{space_name} Effective Target"
+      },
+      "schedule_mode": {
+        "name": "{space_name} Schedule Mode"
+      },
+      "energy_tier": {
+        "name": "{space_name} Energy Tier"
+      },
+      "strategy": {
+        "name": "{space_name} Strategy"
+      },
+      "outdoor_feels_like": {
+        "name": "Outdoor Feels Like"
+      }
+    }
+  }
+}

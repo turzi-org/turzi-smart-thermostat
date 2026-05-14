@@ -1,0 +1,12 @@
+turzi_thermostat:
+  get_strategy:
+    name: Get Strategy
+    description: Returns the current heating/cooling strategy for a space
+    fields:
+      entity_id:
+        description: The climate entity to query
+        required: true
+        selector:
+          entity:
+            domain: climate
+            integration: turzi_thermostat
