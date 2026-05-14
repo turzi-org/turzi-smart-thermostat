@@ -147,6 +147,7 @@ class TurziThermostatPanel extends HTMLElement {
         const overrideBadge = sp.has_override
           ? `<span style="font-size:11px;background:#f59e0b22;color:#f59e0b;border:1px solid #f59e0b44;border-radius:6px;padding:2px 8px;margin-left:8px">✏️ Override</span>`
           : '';
+        const ovOpen = this._ovOpen?.has(id);
         html += `<div class="card" data-space-id="${id}">
           <div class="card-header"><span class="card-title">${sp.name}${overrideBadge}</span><span class="badge ${badgeClass}">${ACTION_LABELS[action] || action}</span></div>
           <div class="temp-display"><span class="temp-current">${sp.current_temp != null ? sp.current_temp.toFixed(1) : '--'}</span><span class="temp-unit">°C</span>
@@ -156,46 +157,54 @@ class TurziThermostatPanel extends HTMLElement {
           <div class="meta-row"><span class="meta-label">Comfort</span><span style="color:${scoreColor}">${score}${score !== '--' ? '/100' : ''}</span></div>
           ${score !== '--' ? `<div class="comfort-bar"><div class="comfort-fill" style="width:${score}%;background:${scoreColor}"></div></div>` : ''}
           ${sp.strategy_reason ? `<div class="meta-row" style="border:none;margin-top:8px"><span style="font-size:12px;color:var(--turzi-muted);font-style:italic">💡 ${sp.strategy_reason}</span></div>` : ''}
-          <details style="margin-top:12px">
-            <summary style="cursor:pointer;font-size:13px;color:var(--turzi-muted);list-style:none;display:flex;align-items:center;gap:6px">
-              <span>✏️ Override</span>
-            </summary>
-            <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px">
-              <div style="display:flex;gap:8px;align-items:center">
-                <label style="font-size:12px;color:var(--turzi-muted);min-width:90px">Temp (°C)</label>
-                <input type="number" step="0.5" min="10" max="35" value="${sp.override_temp ?? sp.target_temp ?? 21}"
-                  class="ov-temp" style="flex:1;padding:6px 10px;border-radius:8px;border:1px solid var(--turzi-border);background:var(--turzi-bg);color:var(--turzi-text)">
-              </div>
-              <div style="display:flex;gap:8px;align-items:center">
-                <label style="font-size:12px;color:var(--turzi-muted);min-width:90px">Mode</label>
-                <select class="ov-mode" style="flex:1;padding:6px 10px;border-radius:8px;border:1px solid var(--turzi-border);background:var(--turzi-bg);color:var(--turzi-text)">
-                  <option value="">— Use schedule —</option>
-                  ${['comfort','eco','sleep','away','boost'].map(m => `<option value="${m}" ${sp.override_mode === m ? 'selected' : ''}>${m.charAt(0).toUpperCase()+m.slice(1)}</option>`).join('')}
-                </select>
-              </div>
-              <div style="display:flex;gap:8px;justify-content:flex-end">
-                ${sp.has_override ? `<button class="secondary ov-clear" style="font-size:12px;padding:6px 12px">↩ Resume schedule</button>` : ''}
-                <button class="primary ov-set" style="font-size:12px;padding:6px 14px">Apply</button>
-              </div>
+          <button class="ov-toggle secondary" style="width:100%;margin-top:12px;font-size:12px;padding:6px;text-align:left">
+            ${ovOpen ? '▾' : '▸'} ✏️ Override
+          </button>
+          <div class="ov-body" style="display:${ovOpen ? 'flex' : 'none'};flex-direction:column;gap:8px;margin-top:8px">
+            <div style="display:flex;gap:8px;align-items:center">
+              <label style="font-size:12px;color:var(--turzi-muted);min-width:90px">Temp (°C)</label>
+              <input type="number" step="0.5" min="10" max="35" value="${sp.override_temp ?? sp.target_temp ?? 21}"
+                class="ov-temp" style="flex:1;padding:6px 10px;border-radius:8px;border:1px solid var(--turzi-border);background:var(--turzi-bg);color:var(--turzi-text)">
             </div>
-          </details>
+            <div style="display:flex;gap:8px;align-items:center">
+              <label style="font-size:12px;color:var(--turzi-muted);min-width:90px">Mode</label>
+              <select class="ov-mode" style="flex:1;padding:6px 10px;border-radius:8px;border:1px solid var(--turzi-border);background:var(--turzi-bg);color:var(--turzi-text)">
+                <option value="">— Use schedule —</option>
+                ${['comfort','eco','sleep','away','boost'].map(m => `<option value="${m}" ${sp.override_mode === m ? 'selected' : ''}>${m.charAt(0).toUpperCase()+m.slice(1)}</option>`).join('')}
+              </select>
+            </div>
+            <div style="display:flex;gap:8px;justify-content:flex-end">
+              ${sp.has_override ? `<button class="secondary ov-clear" style="font-size:12px;padding:6px 12px">↩ Resume schedule</button>` : ''}
+              <button class="primary ov-set" style="font-size:12px;padding:6px 14px">Apply</button>
+            </div>
+          </div>
         </div>`;
       }
       html += '</div>';
     }
     c.innerHTML = html;
-    // Wire up override buttons
+    // Wire up override toggle + buttons
+    if (!this._ovOpen) this._ovOpen = new Set();
     c.querySelectorAll('[data-space-id]').forEach(card => {
       const spaceId = card.dataset.spaceId;
+      // Toggle open/close without re-render
+      card.querySelector('.ov-toggle')?.addEventListener('click', () => {
+        const body = card.querySelector('.ov-body');
+        const btn = card.querySelector('.ov-toggle');
+        const isOpen = body.style.display !== 'none';
+        body.style.display = isOpen ? 'none' : 'flex';
+        btn.textContent = `${isOpen ? '▸' : '▾'} ✏️ Override`;
+        if (isOpen) this._ovOpen.delete(spaceId); else this._ovOpen.add(spaceId);
+      });
       card.querySelector('.ov-set')?.addEventListener('click', async () => {
         const temp = parseFloat(card.querySelector('.ov-temp').value);
         const mode = card.querySelector('.ov-mode').value || null;
         await this._ws('turzi_thermostat/set_override', { space_id: spaceId, temp: isNaN(temp) ? null : temp, mode });
-        this._dashboard = null; await this._loadDashboard();
+        await this._loadDashboard();
       });
       card.querySelector('.ov-clear')?.addEventListener('click', async () => {
         await this._ws('turzi_thermostat/clear_override', { space_id: spaceId });
-        this._dashboard = null; await this._loadDashboard();
+        await this._loadDashboard();
       });
     });
   }
@@ -282,8 +291,8 @@ class TurziThermostatPanel extends HTMLElement {
         placeholder="${placeholder}" value="${display}"
         style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--turzi-border);background:var(--turzi-bg);color:var(--turzi-text)">
       <input type="hidden" id="${id}-val" value="${selectedValue || ''}">
-      <div class="ss-drop" style="display:none;position:absolute;z-index:200;left:0;right:0;top:100%;margin-top:2px;max-height:200px;overflow-y:auto;border-radius:8px;border:1px solid var(--turzi-border);background:var(--turzi-surface);box-shadow:0 8px 24px #0008">
-        <div class="ss-opt" data-val="" style="opacity:.6;font-style:italic">— None —</div>
+      <div class="ss-drop" style="display:none;position:absolute;z-index:9999;left:0;right:0;top:calc(100% + 2px);max-height:220px;overflow-y:auto;border-radius:8px;border:1px solid var(--turzi-border);background:#1e2a3a;box-shadow:0 12px 32px #000a">
+        <div class="ss-opt" data-val="" style="padding:8px 12px;opacity:.6;font-style:italic;cursor:pointer">— None —</div>
         ${opts}
       </div>
     </div>`;

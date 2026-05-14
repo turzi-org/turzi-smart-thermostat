@@ -506,6 +506,18 @@ def ws_get_available_entities(
         "switches": [],
     }
 
+    # Entity ID suffixes that identify internal/computed sensors (not room sensors)
+    _excluded_suffixes = (
+        "_chip_temp", "_zigbee_chip_temp", "_core_chip_temp",
+        "_effective_target", "_comfort_score", "_schedule_mode",
+        "_energy_tier", "_strategy", "_feels_like",
+        "_forecast_high_temp", "_forecast_low_temp",
+    )
+
+    def _is_internal_sensor(eid: str) -> bool:
+        eid_lower = eid.lower()
+        return any(eid_lower.endswith(s) for s in _excluded_suffixes)
+
     for state in hass.states.async_all():
         entity_id = state.entity_id
         domain = entity_id.split(".")[0]
@@ -513,22 +525,27 @@ def ws_get_available_entities(
         friendly_name = attrs.get("friendly_name", entity_id)
         entry = {"entity_id": entity_id, "name": friendly_name}
 
-        # Temperature sensors
+        # Skip Turzi's own computed entities
+        if entity_id.startswith("climate.turzi_") or entity_id.startswith("sensor.turzi_"):
+            continue
+
+        # Temperature sensors — physical room sensors only
         if domain == "sensor" and attrs.get("device_class") == "temperature":
-            result["temperature_sensors"].append(entry)
+            if not _is_internal_sensor(entity_id):
+                result["temperature_sensors"].append(entry)
 
         # Humidity sensors
-        if domain == "sensor" and attrs.get("device_class") == "humidity":
+        elif domain == "sensor" and attrs.get("device_class") == "humidity":
             result["humidity_sensors"].append(entry)
 
-        # Switches (potential heating/cooling outputs + seasonal mode toggle)
-        if domain == "switch":
+        # Switches
+        elif domain == "switch":
             result["heating_outputs"].append(entry)
             result["cooling_outputs"].append(entry)
             result["switches"].append(entry)
 
-        # Climate entities (potential heating/cooling outputs)
-        if domain == "climate" and not entity_id.startswith("climate.turzi_"):
+        # Climate entities (not Turzi's own)
+        elif domain == "climate":
             result["heating_outputs"].append(entry)
             result["cooling_outputs"].append(entry)
 
