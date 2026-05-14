@@ -37,12 +37,14 @@ class TurziThermostatPanel extends HTMLElement {
     this._modal = null;
     this._scheduleSpace = null;
     this._entryId = null;
+    this._dashPoll = null;  // interval handle for dashboard refresh
   }
 
   set hass(h) {
     this._hass = h;
     if (!this._entryId && !this._findingEntry) this._init();
-    if (this._tab === 'dashboard' && this._entryId) this._loadDashboard();
+    // Do NOT call _loadDashboard() here — HA calls this setter on every state
+    // change, which would cause constant re-renders and collapse open panels.
   }
 
   set panel(p) { this._panel = p; }
@@ -51,7 +53,14 @@ class TurziThermostatPanel extends HTMLElement {
     this._findingEntry = true;
     await this._findEntryId();
     this._findingEntry = false;
-    if (this._entryId && !this._config) this._loadConfig();
+    if (this._entryId && !this._config) {
+      await this._loadConfig();
+      // Start dashboard poll if that's the active tab
+      if (this._tab === 'dashboard' && !this._dashPoll) {
+        this._loadDashboard();
+        this._dashPoll = setInterval(() => this._loadDashboard(), 30_000);
+      }
+    }
   }
 
   async _findEntryId() {
@@ -100,7 +109,17 @@ class TurziThermostatPanel extends HTMLElement {
     return this._entities;
   }
 
-  _setTab(t) { this._tab = t; this._render(); if (t === 'dashboard') this._loadDashboard(); }
+  _setTab(t) {
+    this._tab = t;
+    this._render();
+    // Stop any existing poll
+    if (this._dashPoll) { clearInterval(this._dashPoll); this._dashPoll = null; }
+    if (t === 'dashboard') {
+      // Load immediately, then poll every 30s
+      this._loadDashboard();
+      this._dashPoll = setInterval(() => this._loadDashboard(), 30_000);
+    }
+  }
 
   _render() {
     const s = this.shadowRoot;
