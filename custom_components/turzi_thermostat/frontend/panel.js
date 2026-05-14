@@ -40,26 +40,40 @@ class TurziThermostatPanel extends HTMLElement {
 
   set hass(h) {
     this._hass = h;
-    if (!this._entryId) this._findEntryId();
-    if (!this._config) this._loadConfig();
-    if (this._tab === 'dashboard') this._loadDashboard();
+    if (!this._entryId && !this._findingEntry) this._init();
+    if (this._tab === 'dashboard' && this._entryId) this._loadDashboard();
   }
 
   set panel(p) { this._panel = p; }
+
+  async _init() {
+    this._findingEntry = true;
+    await this._findEntryId();
+    this._findingEntry = false;
+    if (this._entryId && !this._config) this._loadConfig();
+  }
 
   async _findEntryId() {
     if (!this._hass) return;
     try {
       const entries = await this._hass.callWS({ type: 'config_entries/get', domain: 'turzi_thermostat' });
-      if (entries && entries.length) this._entryId = entries[0].entry_id;
+      if (entries && entries.length) {
+        this._entryId = entries[0].entry_id;
+        console.log('[Turzi] Found entry_id:', this._entryId);
+      } else {
+        console.warn('[Turzi] No config entries found for turzi_thermostat');
+      }
     } catch (e) {
-      // Fallback: scan hass data
-      console.warn('Could not auto-detect entry_id', e);
+      console.warn('[Turzi] Could not auto-detect entry_id', e);
     }
   }
 
   async _ws(type, data = {}) {
-    if (!this._hass || !this._entryId) return null;
+    if (!this._hass) return null;
+    if (!this._entryId) {
+      await this._findEntryId();
+      if (!this._entryId) { console.error('[Turzi] No entry_id available'); return null; }
+    }
     return this._hass.callWS({ type, entry_id: this._entryId, ...data });
   }
 
@@ -75,7 +89,12 @@ class TurziThermostatPanel extends HTMLElement {
 
   async _loadEntities() {
     if (!this._entities) {
-      this._entities = await this._hass.callWS({ type: 'turzi_thermostat/get_available_entities' });
+      try {
+        this._entities = await this._hass.callWS({ type: 'turzi_thermostat/get_available_entities' });
+      } catch (e) {
+        console.error('[Turzi] Failed to load entities', e);
+        this._entities = { temperature_sensors: [], humidity_sensors: [], heating_outputs: [], cooling_outputs: [] };
+      }
     }
     return this._entities;
   }
